@@ -174,7 +174,7 @@ class ScholInfra_OpenAIRE (ScholInfra):
         """
         t0 = time.time()
 
-        url = self.get_api_url(urllib.parse.quote(title))
+        url = self.get_api_url() + "title={}".format(urllib.parse.quote(title))
         response = requests.get(url).text
         soup = BeautifulSoup(response,  "html.parser")
 
@@ -197,6 +197,28 @@ class ScholInfra_OpenAIRE (ScholInfra):
         self.mark_time(t0)
         return None
 
+    def full_text_search (self, search_term,nresults = None):
+        """
+        parse metadata from XML returned from the OpenAIRE API query
+        """
+        t0 = time.time()
+        base_url = self.get_api_url() + "keywords={}".format(urllib.parse.quote(search_term))
+        
+        if nresults:
+            search_url = base_url + '&size={}'.format(nresults)
+
+        elif not nresults:
+            response = requests.get(base_url).text
+            soup = BeautifulSoup(response,  "html.parser")
+            nresults_response = int(soup.find("total").text)
+            search_url = base_url + '&size={}'.format(nresults_response)
+        
+        response = requests.get(search_url).text
+        soup = BeautifulSoup(response,  "html.parser")
+        pub_metadata = soup.find_all("oaf:result")
+        self.mark_time(t0)
+        return pub_metadata
+    
 
 class ScholInfra_SemanticScholar (ScholInfra):
     """
@@ -340,20 +362,21 @@ class ScholInfra_Dimensions (ScholInfra):
 
             if exact_match == False:
                 query = 'search publications in full_data_exact for "{}" return publications[all] limit 1000'.format(search_term)
-
+    
         if nresults:
             query = 'search publications in full_data_exact for "\\"{}\\"" return publications[all] limit {}'.format(search_term,nresults)
 
             if exact_match == False:
                 query = 'search publications in full_data_exact for "{}" return publications[all] limit {}'.format(search_term,nresults)
 
+            
         self.login()
         response = self.run_query(query)
         search_results = response.publications
-
+        
         self.mark_time(t0)
         return search_results
-
+        
 
 class ScholInfra_RePEc (ScholInfra):
     """
@@ -627,7 +650,7 @@ class ScholInfra_PubMed (ScholInfra):
         response_count = int([d for d in query_return["eGQueryResult"] if d["DbName"] == "pubmed"][0]["Count"])
 
         if response_count > 0:
-            if nresults == None:
+             if nresults == None:
                 handle = Entrez.read(Entrez.esearch(db="pubmed",
                                                     retmax=response_count,
                                                     term="\"{}\"".format(search_term)
@@ -644,10 +667,12 @@ class ScholInfra_PubMed (ScholInfra):
                                     )
 
                 id_list = handle["IdList"]
-            return id_list
+
             
+            return id_list
         else:
             return None
+
 
 
     def full_text_search (self, search_term, nresults = None):
@@ -670,14 +695,11 @@ class ScholInfra_PubMed (ScholInfra):
                 xml = xmltodict.parse(data)
                 meta_list = json.loads(json.dumps(xml))
                 meta = meta_list["PubmedArticleSet"]["PubmedArticle"]
-
+                
                 self.mark_time(t0)
                 return meta
-            
-        else:
-            raise Exception("Input to fetch from PubMed is not a list of IDs") 
-        
 
+                        
     def journal_lookup (self, issn):
         """
         use the NCBI discovery service for ISSN lookup
